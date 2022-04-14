@@ -1,0 +1,22 @@
+﻿Terms of use
+Fujitsu Limited (“Fujitsu”) provides template configuration files which is used for the purpose of running FUJITSU Enterprise Postgres Operator (the “Files”) on the website (github.com/fujitsu/fep-operator-examples) (the “Website”).
+These Terms of Use ("Terms") are applied to the Files.
+Before using the Files, please read these Terms. By using the Files, you agree to these Terms. Fujitsu reserves the right to add, delete or modify these Terms or the Content at any time without notice.
+
+
+1. License
+Fujitsu grants to you a worldwide, perpetual, royalty-free, irrevocable and non-exclusive right to use, translate, modify, reproduce, distribute or otherwise utilize of the Files for the purpose of building and operating FUJITSU Software Enterprise Postgres for Kubernetes products.
+
+2. Ownership of Rights and Limitation of Use
+All copyrights, trademarks, and other intellectual property rights associated with the Files are reserved by Fujitsu or the third party who owns the rights of the Files.
+Except to the extent expressly permitted by applicable law, no Files may be used, copied, modified, translated, distributed, or otherwise utilized for any purpose other than described in Section 1..
+You acknowledge and agree that you must purchase separately license for a fee to use the “FUJITSU Software Enterprise Postgres for Kubernetes" product.
+
+3.Limitation of Warranty and Liability
+THE FILES ARE PROVIDE “AS IS” BASIS. FUJITSU MAKES NO WARRANTIES, EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE FILES PROVIDED HEREUNDER. FUJITSU SPECIFICALLY DISCLAIMS ALL OTHER WARRANTIES, EXPRESS AND IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT AND THOSE ARISING FROM A COURSE OF DEALING, USAGE OR TRADE, AND ALL SUCH WARRANTIES ARE HEREBY EXCLUDED TO THE FULLEST EXTENT PERMITTED BY LAW.
+
+FUJITSU WILL NOT BE LIABLE TO YOU FOR ANY CONSEQUENTIAL, INCIDENTAL, SPECIAL, INDIRECT, OR EXEMPLARY DAMAGES, INCLUDING WITHOUT LIMITATION LOST PROFITS, BUSINESS, CONTRACTS, REVENUE, GOODWILL, PRODUCTION, ANTICIPATED SAVINGS, LOSS OF DATA, OR COSTS OF PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES, OR, FOR ANY CLAIM OR DEMAND BY YOU, HOWEVER CAUSED AND (TO THE FULLEST EXTENT PERMITTED BY LAW) UNDER ANY THEORY OF LIABILITY (INCLUDING NEGLIGENCE) EVEN IF FUJITSU HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+4. Miscellaneous
+High Safety Required Use.  You acknowledge and agree that the Files are designed, developed and manufactured as contemplated for general use, including without limitation, general office use, personal use, household use, and ordinary industrial use, but are not designed, developed and manufactured as contemplated for use accompanying fatal risks or dangers that, unless extremely high safety is secured, could lead directly to death, personal injury, severe physical damage or other loss (hereinafter “High Safety Required Use”), including without limitation, nuclear reaction control in nuclear facility, aircraft flight control, air traffic control, mass transport control, medical life support system, missile launch control in weapon system.  You shall not use the Files without securing the sufficient safety required for the High Safety Required Use. In addition, Fujitsu shall not be liable against you and/or any third party for any claims or damages arising in connection with the High Safety Required Use of the Files.
+
