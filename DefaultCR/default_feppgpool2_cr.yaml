@@ -1,0 +1,101 @@
+apiVersion: fep.fujitsu.io/v1
+kind: FEPPgpool2
+metadata:
+  name: new-fep-pgpool2
+spec:
+  count: 2
+  serviceport: 9999
+  statusport: 9898
+  limits:
+    cpu: 400m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  fepclustername: new-fep
+  customlogsize: 128Mi
+  imagePullPolicy: IfNotPresent
+  customhba: |
+    local   all         all                               trust
+    host    all         all         127.0.0.1/32          trust
+    host    all         all         ::1/128               trust
+  customparams: |
+    listen_addresses = '*'
+    pcp_listen_addresses = '*'
+    num_init_children = 32
+    reserved_connections = 0
+    enable_pool_hba = off
+    allow_clear_text_frontend_auth = off
+    authentication_timeout = 80
+    backend_weight0 = 1
+    backend_weight1 = 1
+    backend_flag0 = 'ALWAYS_PRIMARY'
+    backend_flag1 = 'DISALLOW_TO_FAILOVER'
+    connection_cache = on
+    max_pool = 4
+    listen_backlog_multiplier = 2
+    serialize_accept = off
+    child_life_time = 300
+    client_idle_limit = 0
+    child_max_connections = 0
+    connection_life_time = 0
+    reset_query_list = 'ABORT; DISCARD ALL'
+    client_min_messages = info
+    log_min_messages = debug1
+    log_statement = on
+    log_per_node_statement = on
+    log_client_messages = on
+    log_hostname = on
+    log_connections = on
+    log_line_prefix = '%t: pid %p: '
+    load_balance_mode = on
+    ignore_leading_white_space = on
+    white_function_list = ''
+    black_function_list = 'currval,lastval,nextval,setval'
+    black_query_pattern_list = ''
+    database_redirect_preference_list = ''
+    app_name_redirect_preference_list = ''
+    allow_sql_comments = off
+    disable_load_balance_on_write = 'transaction'
+    statement_level_load_balance = on
+    sr_check_period = 0
+    sr_check_user = 'postgres'
+    delay_threshold = 0
+    log_standby_delay = 'none'
+    ssl = on
+    ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
+    ssl_prefer_server_ciphers = off
+    ssl_ecdh_curve = 'prime256v1'
+    ssl_dh_params_file = ''
+    relcache_expire = 0
+    relcache_size = 256
+    check_temp_table = catalog
+    check_unlogged_table = on
+    enable_shared_relcache = on
+    relcache_query_target = primary
+    wd_port0 = 9000
+  customsslkey: none
+  customsslcert: |-
+    -----BEGIN CERTIFICATE-----
+    MIIDTzCCAjegAwIBAgIUYssQ8I74US5g+1+Z7CHuaDgkZnEwDQYJKoZIhvcNAQEL
+    BQAwNzEQMA4GA1UECgwHRnVqaXRzdTEjMCEGA1UEAwwaRkVQIFJvb3QgQ0EgZm9y
+    IEt1YmVybmV0ZXMwHhcNMjEwMjA2MDM1MjI4WhcNMzEwMjA0MDM1MjI4WjA3MRAw
+    DgYDVQQKDAdGdWppdHN1MSMwIQYDVQQDDBpGRVAgUm9vdCBDQSBmb3IgS3ViZXJu
+    ZXRlczCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMs97gUF0xkUzCgL
+    7MiiDju9ySr/ziwjvcYU7jA9ML+SLmftMs3HtcYbAmSntqI+MDBSR/FAJTOoytuT
+    pV+mCFcGj2YAjDpliHPeNcUpbryy4YMChF3+MovkIwGCksxo5rhiWhGmoBYpA48P
+    4Xe8SPlzqMzhFvNeKzyiUhvjutS2Y1Ss38lsTaurFPx64vQ2PaC54XzdwMptXtpb
+    tYmWSzCpJWwxZ6lF3vitdA2w0tnBWNyctAd0+RIM/fvArxiIqseAux9t0uogm5to
+    lRIhvekuxOpXBPEqtIYQ4j9XUW2JH8vUDnzPkPvjrq+A3Ug8OyyfGVrW7+VYXozu
+    c4aP7P0CAwEAAaNTMFEwHQYDVR0OBBYEFBzCutQ7S74WEhS5V2sNEJBGyLpmMB8G
+    A1UdIwQYMBaAFBzCutQ7S74WEhS5V2sNEJBGyLpmMA8GA1UdEwEB/wQFMAMBAf8w
+    DQYJKoZIhvcNAQELBQADggEBAMDwD85RAaWEBptFgLzKw+9xEUy1vcZaonAuA1qc
+    T342XTueyAugxkC11HwdCGgGS34VyctfMGqj4AW6pA2ez4tLrbOps4DmV4sw8uBL
+    8pgRDgfly3ob9FEg2wa0hmrwX9jH5Bt4vySUE2785uPAqaspT2UNtTBxS85BUi1T
+    sKId2Rtil6an281Z81wyWVI6Jm2D4MG0mbsiGcTPlCtdg/UljvDYymXlAvd4vNhl
+    k9hDa13TgDqJKgKdTIcmZoNQdpEVgFcO0h9AEUy5AuLqxHq60dLfZ6ESGPlMI7Lm
+    i4PzYbCnBmOe+7TnHcPSyrnehs66Ik+oifRd82eYS7vKjFw=
+    -----END CERTIFICATE-----
+  customsslcacert: none
+  custompcp: none
+

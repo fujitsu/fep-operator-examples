@@ -1,0 +1,644 @@
+  pg_capacity_connection:
+    query: |
+      select sys, idle, idleintx, idleintx10min, idleintx1hour, idleintx1day, idleintx1week, (curr.idle + curr.idleintx + curr.active) total,  s.setting "max" from
+      (
+       select
+       count(CASE WHEN a.state is null THEN 1 END) sys,
+       count(CASE WHEN a.state='idle' THEN 1 END) idle,
+       count(CASE WHEN a.state='idle in transaction' OR a.state='idle in transaction (aborted)' THEN 1 END) idleintx,
+       count(CASE WHEN (a.state='idle in transaction' OR a.state='idle in transaction (aborted)') AND age(now(), state_change) > interval '10 min'  THEN 1 END) idleintx10min,
+       count(CASE WHEN (a.state='idle in transaction' OR a.state='idle in transaction (aborted)') AND age(now(),state_change) > interval '1 hour'  THEN 1 END) idleintx1hour,
+       count(CASE WHEN (a.state='idle in transaction' OR a.state='idle in transaction (aborted)') AND age(now(),state_change) > interval '1 day'  THEN 1 END) idleintx1day,
+       count(CASE WHEN (a.state='idle in transaction' OR a.state='idle in transaction (aborted)') AND age(now(),state_change) > interval '1 week'  THEN 1 END) idleintx1week,
+       count(CASE WHEN a.state='active' THEN 1 END) active
+       from  pg_stat_activity a
+      ) curr, pg_settings s where name = 'max_connections'
+    master: true
+    metrics:
+      - sys:
+          usage: 'GAUGE'
+          description: 'Number of system connections.'
+      - idle:
+          usage: 'GAUGE'
+          description: 'Number of idle connections.'
+      - idleintx:
+          usage: 'GAUGE'
+          description: 'Number of idle in transaction connections.'
+      - idleintx10min:
+          usage: 'GAUGE'
+          description: 'Number of idle in transaction connections running longer than 10 min.'
+      - idleintx1hour:
+          usage: 'GAUGE'
+          description: 'Number of idle in transaction connections running longer than 1 hour.'
+      - idleintx1day:
+          usage: 'GAUGE'
+          description: 'Number of idle in transaction connections running longer than 1 day.'
+      - idleintx1week:
+          usage: 'GAUGE'
+          description: 'Number of idle in transaction connections running longer than 1 week.'
+      - total:
+          usage: 'GAUGE'
+          description: 'Number of total connections.'
+      - max:
+          usage: 'GAUGE'
+          description: 'Max number of connections.'
+
+  pg_capacity_schema:
+    query: |
+      SELECT current_database() AS database_name, table_schema, COALESCE(SUM(pg_total_relation_size('"'||table_schema||'"."'||table_name||'"')), 0) AS size
+      FROM information_schema.tables GROUP BY table_schema
+    master: true
+    metrics:
+      - database_name:
+          usage: 'LABEL'
+          description: 'Database name.'
+      - table_schema:
+          usage: 'LABEL'
+          description: 'Table schema name.'
+      - size:
+          usage: 'GAUGE'
+          description: 'Disk space of schema.'
+
+  pg_capacity_tblspace:
+    query: |
+      SELECT pg_tablespace.spcname AS tablespace_name, pg_tablespace_size(pg_tablespace.spcname) AS tablespace_size FROM pg_tablespace
+    master: true
+    metrics:
+      - tablespace_name:
+          usage: 'LABEL'
+          description: 'Table space name.'
+      - tablespace_size:
+          usage: 'GAUGE'
+          description: 'Disk space of table space.'
+
+  pg_capacity_tblvacuum:
+    query: |
+      SELECT current_database() datname, t.table_schema,  count(t.table_name) table_count
+      FROM information_schema.tables t
+      INNER JOIN pg_catalog.pg_stat_user_tables tu on t.table_schema::text=tu.schemaname::text and t.table_name::text=tu.relname::text
+      and
+      age(now(),greatest(COALESCE(last_vacuum, '1970-01-01Z'), COALESCE(last_autovacuum, '1970-01-01Z'))) > interval '1 day'
+      GROUP BY t.table_schema
+    master: true
+    metrics:
+      - datname:
+          usage: 'LABEL'
+          description: 'Database name.'
+      - table_schema:
+          usage: 'LABEL'
+          description: 'Table schema name.'
+      - table_count:
+          usage: 'GAUGE'
+          description: 'Number of tables without vacuum for more than a day.'
+
+  pg_capacity_longtx:
+    query: |
+      with xact_count as (
+       SELECT COALESCE(datname, '') datname, count(1)
+       FROM pg_stat_activity
+       where backend_type='client backend' and age(now(), COALESCE(xact_start, '1970-01-01Z')) > interval '5 minutes'
+       group by datname
+      )
+      select d.datname, coalesce(xc.count, 0) as count from pg_database d left join xact_count xc on d.datname=xc.datname
+    master: true
+    metrics:
+      - datname:
+          usage: 'LABEL'
+          description: 'Database name.'
+      - count:
+          usage: 'GAUGE'
+          description: 'Number of transactions running longer than 5 minutes.'
+
+  pg_capacity_tblbloat:
+    query: |
+      SELECT DISTINCT
+        current_database() as datname, schemaname, tablename as relname, /*reltuples::bigint, relpages::bigint, otta,*/
+        CASE WHEN relpages < otta THEN 0 ELSE bs*(sml.relpages-otta)::BIGINT END AS wastedbytes
+      FROM (
+        SELECT
+          schemaname, tablename, cc.reltuples, cc.relpages, bs,
+          CEIL((cc.reltuples*((datahdr+ma-
+            (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+nullhdr2+4))/(bs-20::float)) AS otta,
+          COALESCE(c2.relname,'?') AS iname, COALESCE(c2.reltuples,0) AS ituples, COALESCE(c2.relpages,0) AS ipages,
+          COALESCE(CEIL((c2.reltuples*(datahdr-12))/(bs-20::float)),0) AS iotta -- very rough approximation, assumes all cols
+        FROM (
+          SELECT
+            ma,bs,schemaname,tablename,
+            (datawidth+(hdr+ma-(case when hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
+            (maxfracsum*(nullhdr+ma-(case when nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
+          FROM (
+            SELECT
+              schemaname, tablename, hdr, ma, bs,
+              SUM((1-null_frac)*avg_width) AS datawidth,
+              MAX(null_frac) AS maxfracsum,
+              hdr+(
+                SELECT 1+count(*)/8
+                FROM pg_stats s2
+                WHERE null_frac<>0 AND s2.schemaname = s.schemaname AND s2.tablename = s.tablename
+              ) AS nullhdr
+            FROM pg_stats s, (
+              SELECT
+                (SELECT current_setting('block_size')::numeric) AS bs,
+                CASE WHEN substring(v,12,3) IN ('8.0','8.1','8.2') THEN 27 ELSE 23 END AS hdr,
+                CASE WHEN v ~ 'mingw32' THEN 8 ELSE 4 END AS ma
+              FROM (SELECT version() AS v) AS foo
+            ) AS constants
+            GROUP BY 1,2,3,4,5
+          ) AS foo
+        ) AS rs
+        JOIN pg_class cc ON cc.relname = rs.tablename
+        JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname = rs.schemaname AND nn.nspname <> 'information_schema'
+        LEFT JOIN pg_index i ON indrelid = cc.oid
+        LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid
+      ) AS sml
+      ORDER BY wastedbytes DESC
+    master: true
+    metrics:
+      - datname:
+          usage: 'LABEL'
+          description: 'Database name.'
+      - schemaname:
+          usage: 'LABEL'
+          description: 'Schema name.'
+      - relname:
+          usage: 'LABEL'
+          description: 'Name of this table.'
+      - wastedbytes:
+          usage: 'GAUGE'
+          description: 'Number of bytes wasted for table.'
+
+  pg_performance_locking_detail:
+    query: |
+      SELECT blocked_locks.pid AS blocked_pid,
+      blocked_activity.usename AS blocked_user,
+      blocking_locks.pid AS blocking_pid,
+      blocking_activity.usename AS blocking_user,
+      blocked_activity.query AS blocked_statement,
+      1 locks
+      FROM pg_catalog.pg_locks blocked_locks
+      JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+      JOIN pg_catalog.pg_locks blocking_locks
+      ON blocking_locks.locktype = blocked_locks.locktype
+      AND blocking_locks.DATABASE IS NOT DISTINCT FROM blocked_locks.DATABASE
+      AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+      AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+      AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+      AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+      AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+      AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+      AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+      AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+      AND blocking_locks.pid != blocked_locks.pid
+      JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+      WHERE NOT blocked_locks.GRANTED
+    master: true
+    metrics:
+      - blocked_pid:
+          usage: 'LABEL'
+          description: 'Blocked process id.'
+      - blocked_user:
+          usage: 'LABEL'
+          description: 'Blocked user.'
+      - blocking_pid:
+          usage: 'LABEL'
+          description: 'Blocking process id.'
+      - blocking_user:
+          usage: 'LABEL'
+          description: 'Blocking user.'
+      - blocked_statement:
+          usage: 'LABEL'
+          description: 'Blocked statement.'
+      - locks:
+          usage: 'GAUGE'
+          description: 'Number of processes in blocked state.'
+
+  pg_performance_locking:
+    query: |
+      WITH
+      locks as (
+       SELECT blocked_locks.DATABASE, count(blocked_locks.pid) locks
+       FROM pg_catalog.pg_locks blocked_locks
+       JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+       JOIN pg_catalog.pg_locks blocking_locks
+       ON blocking_locks.locktype = blocked_locks.locktype
+       AND blocking_locks.DATABASE IS NOT DISTINCT FROM blocked_locks.DATABASE
+       AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+       AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+       AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+       AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+       AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+       AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+       AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+       AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+       AND blocking_locks.pid != blocked_locks.pid
+       JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+       WHERE NOT blocked_locks.GRANTED group by blocked_locks.DATABASE
+      ),
+      dbs as (
+       select * from pg_catalog.pg_database
+      )
+      select dbs.datname, coalesce(locks.locks, 0) locks from dbs left join locks on dbs.oid=DATABASE
+    master: true
+    metrics:
+      - datname:
+          usage: 'LABEL'
+          description: 'Database name'
+      - locks:
+          usage: 'GAUGE'
+          description: 'Number of processes in blocked state.'
+
+  pg_replication:
+    query: |
+      SELECT CASE WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0 ELSE GREATEST (0, EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))) END AS lag
+    master: true
+    metrics:
+      - lag:
+          usage: "GAUGE"
+          description: "Replication lag behind master in seconds"
+
+  pg_postmaster:
+    query: |
+      SELECT pg_postmaster_start_time as start_time from pg_postmaster_start_time()
+    master: true
+    metrics:
+      - start_time:
+          usage: "GAUGE"
+          description: "Time at which postmaster started"
+
+  pg_stat_user_tables:
+    query: |
+      SELECT
+        current_database() datname,
+        schemaname,
+        relname,
+        seq_scan,
+        seq_tup_read,
+        idx_scan,
+        idx_tup_fetch,
+        n_tup_ins,
+        n_tup_upd,
+        n_tup_del,
+        n_tup_hot_upd,
+        n_live_tup,
+        n_dead_tup,
+        n_mod_since_analyze,
+        last_vacuum,
+        last_autovacuum,
+        last_analyze,
+        last_autoanalyze,
+        vacuum_count,
+        autovacuum_count,
+        analyze_count,
+        autoanalyze_count
+      FROM
+        pg_stat_user_tables
+    master: true
+    metrics:
+      - datname:
+          usage: "LABEL"
+          description: "Name of current database"
+      - schemaname:
+          usage: "LABEL"
+          description: "Name of the schema that this table is in"
+      - relname:
+          usage: "LABEL"
+          description: "Name of this table"
+      - seq_scan:
+          usage: "COUNTER"
+          description: "Number of sequential scans initiated on this table"
+      - seq_tup_read:
+          usage: "COUNTER"
+          description: "Number of live rows fetched by sequential scans"
+      - idx_scan:
+          usage: "COUNTER"
+          description: "Number of index scans initiated on this table"
+      - idx_tup_fetch:
+          usage: "COUNTER"
+          description: "Number of live rows fetched by index scans"
+      - n_tup_ins:
+          usage: "COUNTER"
+          description: "Number of rows inserted"
+      - n_tup_upd:
+          usage: "COUNTER"
+          description: "Number of rows updated"
+      - n_tup_del:
+          usage: "COUNTER"
+          description: "Number of rows deleted"
+      - n_tup_hot_upd:
+          usage: "COUNTER"
+          description: "Number of rows HOT updated (i.e., with no separate index update required)"
+      - n_live_tup:
+          usage: "GAUGE"
+          description: "Estimated number of live rows"
+      - n_dead_tup:
+          usage: "GAUGE"
+          description: "Estimated number of dead rows"
+      - n_mod_since_analyze:
+          usage: "GAUGE"
+          description: "Estimated number of rows changed since last analyze"
+      - last_vacuum:
+          usage: "GAUGE"
+          description: "Last time at which this table was manually vacuumed (not counting VACUUM FULL)"
+      - last_autovacuum:
+          usage: "GAUGE"
+          description: "Last time at which this table was vacuumed by the autovacuum daemon"
+      - last_analyze:
+          usage: "GAUGE"
+          description: "Last time at which this table was manually analyzed"
+      - last_autoanalyze:
+          usage: "GAUGE"
+          description: "Last time at which this table was analyzed by the autovacuum daemon"
+      - vacuum_count:
+          usage: "COUNTER"
+          description: "Number of times this table has been manually vacuumed (not counting VACUUM FULL)"
+      - autovacuum_count:
+          usage: "COUNTER"
+          description: "Number of times this table has been vacuumed by the autovacuum daemon"
+      - analyze_count:
+          usage: "COUNTER"
+          description: "Number of times this table has been manually analyzed"
+      - autoanalyze_count:
+          usage: "COUNTER"
+          description: "Number of times this table has been analyzed by the autovacuum daemon"
+
+  pg_statio_user_tables:
+    query: |
+      SELECT current_database() datname, schemaname, relname, heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit, toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit FROM pg_statio_user_tables
+    metrics:
+      - datname:
+          usage: "LABEL"
+          description: "Name of current database"
+      - schemaname:
+          usage: "LABEL"
+          description: "Name of the schema that this table is in"
+      - relname:
+          usage: "LABEL"
+          description: "Name of this table"
+      - heap_blks_read:
+          usage: "COUNTER"
+          description: "Number of disk blocks read from this table"
+      - heap_blks_hit:
+          usage: "COUNTER"
+          description: "Number of buffer hits in this table"
+      - idx_blks_read:
+          usage: "COUNTER"
+          description: "Number of disk blocks read from all indexes on this table"
+      - idx_blks_hit:
+          usage: "COUNTER"
+          description: "Number of buffer hits in all indexes on this table"
+      - toast_blks_read:
+          usage: "COUNTER"
+          description: "Number of disk blocks read from this table's TOAST table (if any)"
+      - toast_blks_hit:
+          usage: "COUNTER"
+          description: "Number of buffer hits in this table's TOAST table (if any)"
+      - tidx_blks_read:
+          usage: "COUNTER"
+          description: "Number of disk blocks read from this table's TOAST table indexes (if any)"
+      - tidx_blks_hit:
+          usage: "COUNTER"
+          description: "Number of buffer hits in this table's TOAST table indexes (if any)"
+
+  pg_database:
+    query: |
+      SELECT pg_database.datname, pg_database_size(pg_database.datname) as size_bytes FROM pg_database
+    master: true
+    cache_seconds: 30
+    metrics:
+      - datname:
+          usage: "LABEL"
+          description: "Name of the database"
+      - size_bytes:
+          usage: "GAUGE"
+          description: "Disk space used by the database"
+
+  pg_stat_statements:
+    query: |
+      SELECT t2.rolname, t3.datname, queryid, calls, total_plan_time / 1000 as total_plan_time_seconds, total_exec_time / 1000 as total_exec_time_seconds, min_plan_time / 1000 as min_plan_time_seconds, min_exec_time / 1000 as min_exec_time_seconds, max_plan_time / 1000 as max_plan_time_seconds, max_exec_time / 1000 as max_exec_time_seconds, mean_plan_time / 1000 as mean_plan_time_seconds, mean_exec_time / 1000 as mean_exec_time_seconds, stddev_plan_time / 1000 as stddev_plan_time_seconds, stddev_exec_time / 1000 as stddev_exec_time_seconds, rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written, local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written, temp_blks_read, temp_blks_written, blk_read_time / 1000 as blk_read_time_seconds, blk_write_time / 1000 as blk_write_time_seconds FROM pg_stat_statements t1 JOIN pg_roles t2 ON (t1.userid=t2.oid) JOIN pg_database t3 ON (t1.dbid=t3.oid) WHERE t2.rolname != 'rdsadmin'
+    master: true
+    metrics:
+      - rolname:
+          usage: "LABEL"
+          description: "Name of user"
+      - datname:
+          usage: "LABEL"
+          description: "Name of database"
+      - queryid:
+          usage: "LABEL"
+          description: "Query ID"
+      - calls:
+          usage: "COUNTER"
+          description: "Number of times executed"
+      - total_plan_time_seconds:
+          usage: "COUNTER"
+          description: "Total plan time spent in the statement, in milliseconds"
+      - total_exec_time_seconds:
+          usage: "COUNTER"
+          description: "Total exec time spent in the statement, in milliseconds"
+      - min_plan_time_seconds:
+          usage: "GAUGE"
+          description: "Minimum plan time spent in the statement, in milliseconds"
+      - min_exec_time_seconds:
+          usage: "GAUGE"
+          description: "Minimum exec time spent in the statement, in milliseconds"
+      - max_plan_time_seconds:
+          usage: "GAUGE"
+          description: "Maximum plan time spent in the statement, in milliseconds"
+      - max_exec_time_seconds:
+          usage: "GAUGE"
+          description: "Maximum exec time spent in the statement, in milliseconds"
+      - mean_plan_time_seconds:
+          usage: "GAUGE"
+          description: "Mean plan time spent in the statement, in milliseconds"
+      - mean_exec_time_seconds:
+          usage: "GAUGE"
+          description: "Mean exec time spent in the statement, in milliseconds"
+      - stddev_plan_time_seconds:
+          usage: "GAUGE"
+          description: "Population standard deviation of plan time spent in the statement, in milliseconds"
+      - stddev_exec_time_seconds:
+          usage: "GAUGE"
+          description: "Population standard deviation of exec time spent in the statement, in milliseconds"
+      - rows:
+          usage: "COUNTER"
+          description: "Total number of rows retrieved or affected by the statement"
+      - shared_blks_hit:
+          usage: "COUNTER"
+          description: "Total number of shared block cache hits by the statement"
+      - shared_blks_read:
+          usage: "COUNTER"
+          description: "Total number of shared blocks read by the statement"
+      - shared_blks_dirtied:
+          usage: "COUNTER"
+          description: "Total number of shared blocks dirtied by the statement"
+      - shared_blks_written:
+          usage: "COUNTER"
+          description: "Total number of shared blocks written by the statement"
+      - local_blks_hit:
+          usage: "COUNTER"
+          description: "Total number of local block cache hits by the statement"
+      - local_blks_read:
+          usage: "COUNTER"
+          description: "Total number of local blocks read by the statement"
+      - local_blks_dirtied:
+          usage: "COUNTER"
+          description: "Total number of local blocks dirtied by the statement"
+      - local_blks_written:
+          usage: "COUNTER"
+          description: "Total number of local blocks written by the statement"
+      - temp_blks_read:
+          usage: "COUNTER"
+          description: "Total number of temp blocks read by the statement"
+      - temp_blks_written:
+          usage: "COUNTER"
+          description: "Total number of temp blocks written by the statement"
+      - blk_read_time_seconds:
+          usage: "COUNTER"
+          description: "Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)"
+      - blk_write_time_seconds:
+          usage: "COUNTER"
+          description: "Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)"
+
+  pg_wait:
+    query: |
+      SELECT datname, wait_event_type AS event, count(*) AS count FROM pg_stat_activity WHERE datname NOT IN ('template0', 'template1') AND backend_type = 'client backend' AND pid <> pg_backend_pid() GROUP BY 1, 2
+    master: true
+    metrics:
+      - datname:
+          usage: 'LABEL'
+          description: 'Name of the database this backend is connected to'
+      - event:
+          usage: 'LABEL'
+          description: 'Wait event type, LWLock, Lock, BufferPin, Activity, Extension, Client, IPC, Timeout, IO'
+      - count:
+          usage: 'GAUGE'
+          description: 'Count of WaitEvent on target database'
+
+  pg_backup:
+    query: |
+      with latest_backup as ( select t1.backup_stop, t1.type, t1.backup_size, t1.backup_size_comp, t1.backup_exec_time from fep_exporter.pgbackrest_info_backup as t1 where t1.backup_stop = (select max(backup_stop) from fep_exporter.pgbackrest_info_backup ) ) select min(backup_stop) as recovery_window, now() - max(backup_stop) as elapsed_time_from_last_full_backup, (select sum(backup_size_comp) from fep_exporter.pgbackrest_info_backup group by type having type = 'full') as total_full_backup_size_comp, (select sum(backup_size_comp) from fep_exporter.pgbackrest_info_backup group by type having type = 'incr') as total_incr_backup_size_comp, (select backup_stop from latest_backup) as last_backup_stop, (select type from latest_backup) as last_backup_type, (select backup_size from latest_backup) as last_backup_database_size, (select backup_size_comp from latest_backup) as last_backup_size_comp, (select backup_exec_time from latest_backup) as last_backup_exec_time from fep_exporter.pgbackrest_info_backup
+    master: true
+    metrics:
+      - recovery_window:
+          description: 'Recovery window (timestamp)'
+          usage: 'GAUGE'
+      - elapsed_time_from_last_full_backup:
+          description: 'Elapsed time from last full backup (seconds)'
+          usage: 'GAUGE'
+      - total_full_backup_size_comp:
+          description: 'Total compressed full backup size (byte)'
+          usage: 'GAUGE'
+      - total_incr_backup_size_comp:
+          description: 'Total compressed incr backup size (byte)'
+          usage: 'GAUGE'
+      - last_backup_stop:
+          description: 'last backup stop'
+          usage: 'GAUGE'
+      - last_backup_type:
+          description: 'last backup type'
+          usage: 'GAUGE'
+      - last_backup_database_size:
+          description: 'last backup database size'
+          usage: 'GAUGE'
+      - last_backup_size_comp:
+          description: 'last backup compressed size'
+          usage: 'GAUGE'
+      - last_backup_exec_time:
+          description: 'last backup execution time'
+          usage: 'GAUGE'
+
+  pgpool_nodes:
+    query: |
+      with primary_node as (select t1.node_id as primary_node_id, t1.lb_weight as primary_lb_weight, t1.status as primary_status from fep_exporter.pgpool2_stat_load_balance as t1 where t1.role = 'primary'), standby_node as (select t1.node_id as standby_node_id, t1.lb_weight as standby_lb_weight, t1.status as standby_status from fep_exporter.pgpool2_stat_load_balance as t1 where t1.role = 'standby') select primary_node_id, primary_lb_weight, primary_status, standby_node_id, standby_lb_weight, standby_status from primary_node, standby_node
+    master: true
+    metrics:
+      - primary_node_id:
+          description: 'primary node id'
+          usage: 'LABEL'
+      - primary_lb_weight:
+          description: 'primary load balance weight'
+          usage: 'GAUGE'
+      - primary_status:
+          description: 'primary status'
+          usage: 'LABEL'
+      - standby_node_id:
+          description: 'standby node id'
+          usage: 'LABEL'
+      - standby_lb_weight:
+          description: 'standby load balance weight'
+          usage: 'GAUGE'
+      - standby_status:
+          description: 'standby status'
+          usage: 'LABEL'
+
+  pgpool_stats:
+    query: |
+      with primary_node as (select t1.select_cnt as primary_select_cnt, t1.insert_cnt as primary_insert_cnt, t1.update_cnt as primary_update_cnt, t1.delete_cnt as primary_delete_cnt, t1.ddl_cnt as primary_ddl_cnt, t1.other_cnt as primary_other_cnt, t1.panic_cnt as primary_panic_cnt, t1.fatal_cnt as primary_fatal_cnt, t1.error_cnt as primary_error_cnt from fep_exporter.pgpool2_stat_sql_command as t1 where t1.role = 'primary'), standby_node as (select t1.select_cnt as standby_select_cnt, t1.insert_cnt as standby_insert_cnt, t1.update_cnt as standby_update_cnt, t1.delete_cnt as standby_delete_cnt, t1.ddl_cnt as standby_ddl_cnt, t1.other_cnt as standby_other_cnt, t1.panic_cnt as standby_panic_cnt, t1.fatal_cnt as standby_fatal_cnt, t1.error_cnt as standby_error_cnt from fep_exporter.pgpool2_stat_sql_command as t1 where t1.role = 'standby') select primary_select_cnt, primary_insert_cnt, primary_update_cnt, primary_delete_cnt, primary_ddl_cnt, primary_other_cnt, primary_panic_cnt, primary_fatal_cnt, primary_error_cnt, standby_select_cnt, standby_insert_cnt, standby_update_cnt, standby_delete_cnt, standby_ddl_cnt, standby_other_cnt, standby_panic_cnt, standby_fatal_cnt, standby_error_cnt from primary_node, standby_node
+    master: true
+    metrics:
+      - primary_select_cnt:
+          description: 'primary select count'
+          usage: 'COUNTER'
+      - primary_insert_cnt:
+          description: 'primary insert count'
+          usage: 'COUNTER'
+      - primary_update_cnt:
+          description: 'primary update count'
+          usage: 'COUNTER'
+      - primary_delete_cnt:
+          description: 'primary delete count'
+          usage: 'COUNTER'
+      - primary_ddl_cnt:
+          description: 'primary ddl count'
+          usage: 'COUNTER'
+      - primary_other_cnt:
+          description: 'primary other count'
+          usage: 'COUNTER'
+      - primary_panic_cnt:
+          description: 'primary panic count'
+          usage: 'COUNTER'
+      - primary_fatal_cnt:
+          description: 'primary fatal count'
+          usage: 'COUNTER'
+      - primary_error_cnt:
+          description: 'primary error count'
+          usage: 'COUNTER'
+      - standby_select_cnt:
+          description: 'standby select count'
+          usage: 'COUNTER'
+      - standby_insert_cnt:
+          description: 'standby insert count'
+          usage: 'COUNTER'
+      - standby_update_cnt:
+          description: 'standby update count'
+          usage: 'COUNTER'
+      - standby_delete_cnt:
+          description: 'standby delete count'
+          usage: 'COUNTER'
+      - standby_ddl_cnt:
+          description: 'standby ddl count'
+          usage: 'COUNTER'
+      - standby_other_cnt:
+          description: 'standby other count'
+          usage: 'COUNTER'
+      - standby_panic_cnt:
+          description: 'standby panic count'
+          usage: 'COUNTER'
+      - standby_fatal_cnt:
+          description: 'standby fatal count'
+          usage: 'COUNTER'
+      - standby_error_cnt:
+          description: 'standby error count'
+          usage: 'COUNTER'
+
+  pgpool_pools:
+    query: |
+      with primary_node as ( select count(pool_connected) as primary_pool_connected_count from fep_exporter.pgpool2_stat_conn_pool where pool_connected = true and backend_id = 0 ), standby_node as ( select count(pool_connected) as standby_pool_connected_count from fep_exporter.pgpool2_stat_conn_pool where pool_connected = true and backend_id = 1 ) select primary_pool_connected_count, standby_pool_connected_count from primary_node, standby_node
+    master: true
+    metrics:
+      - primary_pool_connected_count:
+          description: 'primary pool connected count'
+          usage: 'GAUGE'
+      - standby_pool_connected_count:
+          description: 'standby pool connected count'
+          usage: 'GAUGE'

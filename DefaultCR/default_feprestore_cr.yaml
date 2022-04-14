@@ -1,0 +1,17 @@
+apiVersion: fep.fujitsu.io/v1
+kind: FEPRestore
+metadata:
+  name: new-fep-restore
+spec:
+  mcSpec:
+    limits:
+      cpu: 200m
+      memory: 300Mi
+    requests:
+      cpu: 100m
+      memory: 200Mi
+  fromFEPcluster: new-fep
+  toFEPcluster: new-fep-2
+  restoretype: latest
+  imagePullPolicy: IfNotPresent
+  sysExtraLogging: false

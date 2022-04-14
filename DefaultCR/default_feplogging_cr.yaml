@@ -1,0 +1,17 @@
+apiVersion: fep.fujitsu.io/v1
+kind: FEPLogging
+metadata:
+  name: new-fep-logging
+spec:
+  fepLogging:
+    sysExtraLogging: false
+    restartRequired: false
+    image:
+      pullPolicy: IfNotPresent
+    mcSpec:
+      limits:
+        cpu: 500m
+        memory: 700Mi
+      requests:
+        cpu: 200m
+        memory: 512Mi

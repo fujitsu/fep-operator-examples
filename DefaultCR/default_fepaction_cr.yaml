@@ -1,0 +1,12 @@
+apiVersion: fep.fujitsu.io/v1
+kind: FEPAction
+metadata:
+  name: new-fep-action
+spec:
+  sysExtraLogging: false
+  targetClusterName: new-fep
+  fepAction:
+    type: reload
+    args:
+      - new-fep-sts-0
+      - new-fep-sts-1
