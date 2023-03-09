@@ -71,9 +71,10 @@ spec:
     relcache_size = 256
     check_temp_table = catalog
     check_unlogged_table = on
-    enable_shared_relcache = on
+    enable_shared_relcache = off
     relcache_query_target = primary
     wd_port0 = 9000
+    failover_on_backend_error = off
   customsslkey: none
   customsslcert: |-
     -----BEGIN CERTIFICATE-----

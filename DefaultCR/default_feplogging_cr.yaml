@@ -5,6 +5,7 @@ metadata:
 spec:
   fepLogging:
     sysExtraLogging: false
+    sysExtraEvent: true
     restartRequired: false
     image:
       pullPolicy: IfNotPresent

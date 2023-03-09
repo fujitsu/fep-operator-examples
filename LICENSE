@@ -1,16 +1,16 @@
 ﻿Terms of use
-Fujitsu Limited (“Fujitsu”) provides template configuration files which is used for the purpose of running FUJITSU Enterprise Postgres Operator (the “Files”) on the website (github.com/fujitsu/fep-operator-examples) (the “Website”).
+Fujitsu Limited (“Fujitsu”) provides template configuration files which is used for the purpose of running Fujitsu Enterprise Postgres Operator (the “Files”) on the website (github.com/fujitsu/fep-operator-examples) (the “Website”).
 These Terms of Use ("Terms") are applied to the Files.
 Before using the Files, please read these Terms. By using the Files, you agree to these Terms. Fujitsu reserves the right to add, delete or modify these Terms or the Content at any time without notice.
 
 
 1. License
-Fujitsu grants to you a worldwide, perpetual, royalty-free, irrevocable and non-exclusive right to use, translate, modify, reproduce, distribute or otherwise utilize of the Files for the purpose of building and operating FUJITSU Software Enterprise Postgres for Kubernetes products.
+Fujitsu grants to you a worldwide, perpetual, royalty-free, irrevocable and non-exclusive right to use, translate, modify, reproduce, distribute or otherwise utilize of the Files for the purpose of building and operating Fujitsu Enterprise Postgres for Kubernetes products.
 
 2. Ownership of Rights and Limitation of Use
 All copyrights, trademarks, and other intellectual property rights associated with the Files are reserved by Fujitsu or the third party who owns the rights of the Files.
 Except to the extent expressly permitted by applicable law, no Files may be used, copied, modified, translated, distributed, or otherwise utilized for any purpose other than described in Section 1..
-You acknowledge and agree that you must purchase separately license for a fee to use the “FUJITSU Software Enterprise Postgres for Kubernetes" product.
+You acknowledge and agree that you must purchase separately license for a fee to use the “Fujitsu Enterprise Postgres for Kubernetes" product.
 
 3.Limitation of Warranty and Liability
 THE FILES ARE PROVIDE “AS IS” BASIS. FUJITSU MAKES NO WARRANTIES, EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE FILES PROVIDED HEREUNDER. FUJITSU SPECIFICALLY DISCLAIMS ALL OTHER WARRANTIES, EXPRESS AND IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT AND THOSE ARISING FROM A COURSE OF DEALING, USAGE OR TRADE, AND ALL SUCH WARRANTIES ARE HEREBY EXCLUDED TO THE FULLEST EXTENT PERMITTED BY LAW.

@@ -516,7 +516,7 @@
 
   pg_backup:
     query: |
-      with latest_backup as ( select t1.backup_stop, t1.type, t1.backup_size, t1.backup_size_comp, t1.backup_exec_time from fep_exporter.pgbackrest_info_backup as t1 where t1.backup_stop = (select max(backup_stop) from fep_exporter.pgbackrest_info_backup ) ) select min(backup_stop) as recovery_window, now() - max(backup_stop) as elapsed_time_from_last_full_backup, (select sum(backup_size_comp) from fep_exporter.pgbackrest_info_backup group by type having type = 'full') as total_full_backup_size_comp, (select sum(backup_size_comp) from fep_exporter.pgbackrest_info_backup group by type having type = 'incr') as total_incr_backup_size_comp, (select backup_stop from latest_backup) as last_backup_stop, (select type from latest_backup) as last_backup_type, (select backup_size from latest_backup) as last_backup_database_size, (select backup_size_comp from latest_backup) as last_backup_size_comp, (select backup_exec_time from latest_backup) as last_backup_exec_time from fep_exporter.pgbackrest_info_backup
+      with latest_backup as ( select t1.backup_stop, t1.type, t1.backup_size, t1.backup_size_comp, t1.backup_exec_time from fep_exporter.pgbackrest_info_backup as t1 where t1.backup_stop = (select max(backup_stop) from fep_exporter.pgbackrest_info_backup ) ) select min(backup_stop) as recovery_window, extract (epoch from now() - max(backup_stop)) as elapsed_time_from_last_full_backup, (select sum(backup_size_comp) from fep_exporter.pgbackrest_info_backup group by type having type = 'full') as total_full_backup_size_comp, (select sum(backup_size_comp) from fep_exporter.pgbackrest_info_backup group by type having type = 'incr') as total_incr_backup_size_comp, (select backup_stop from latest_backup) as last_backup_stop, (select case when type='full' then 1 when type='incr' then 2 when type='diff' then 3 else -1 end from latest_backup) as last_backup_type, (select backup_size from latest_backup) as last_backup_database_size, (select backup_size_comp from latest_backup) as last_backup_size_comp, extract (epoch from (select backup_exec_time from latest_backup)) as last_backup_exec_time from fep_exporter.pgbackrest_info_backup
     master: true
     metrics:
       - recovery_window:
@@ -547,6 +547,92 @@
           description: 'last backup execution time'
           usage: 'GAUGE'
 
+  pg_password_valid:
+    query: |
+      SELECT 
+        rolname,
+        TRUNC (EXTRACT (EPOCH FROM (rolvaliduntil - now())) / (60*60*24)) AS days,
+        EXTRACT (EPOCH FROM (rolvaliduntil - now())) AS seconds,
+        cast(rolvaliduntil AS TEXT) AS date
+      FROM
+        pg_roles
+      WHERE
+        rolvaliduntil!='infinity' AND rolvaliduntil is not null
+    master: true
+    metrics:
+      - rolname:
+          usage: "LABEL"
+          description: "Name of user"
+      - date:
+          usage: "LABEL"
+          description: "Password Expiration Date"
+      - days:
+          usage: "GAUGE"
+          description: "Number of days remaining before password expires."
+      - seconds:
+          usage: "GAUGE"
+          description: "Number of seconds remaining before password expires."
+
+  pg_not_set_password_valid:
+    query: |
+      SELECT
+       COUNT(CASE WHEN a.rolvaliduntil is null AND a.rolcanlogin='t' THEN 1 END) null_count,
+       COUNT(CASE WHEN a.rolvaliduntil='infinity' AND a.rolcanlogin='t' THEN 1 END) infinity_count,
+       COUNT(CASE WHEN (a.rolvaliduntil is null OR a.rolvaliduntil='infinity') AND a.rolcanlogin='t' THEN 1 END) all_count
+      FROM pg_roles a
+    master: true
+    metrics:
+      - null_count:
+          usage: "GAUGE"
+          description: "Number of days remaining before password valid is null."
+      - infinity_count:
+          usage: "GAUGE"
+          description: "Number of days remaining before password valid is infinity."
+      - all_count:
+          usage: "GAUGE"
+          description: "Number of days remaining before password valid is null or infinity."
+
+  pg_tde_encrypted:
+    query: |
+      SELECT
+         current_database() datname,
+         ts.oid AS tablespace_oid,
+         ts.spcname AS tablespace_name, 
+         tsx.spcencalgo AS encryption_algorithm,
+         coalesce(t.count, 0) AS objs
+      FROM
+         pg_tablespace ts
+         JOIN pgx_tablespaces tsx ON ts.oid = tsx.spctablespace
+         LEFT OUTER JOIN (
+            SELECT
+               CASE WHEN c.reltablespace <> 0
+                  THEN c.reltablespace
+                  ELSE (select dattablespace from pg_database where datname = current_database()) 
+               END AS reltablespaceid,
+               count(*) AS count
+            FROM pg_class c
+               LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = ANY (ARRAY['r'::"char", 'm'::"char", 'p'::"char", 'i'::"char"])
+               AND (n.nspname <> ALL (ARRAY['pg_toast'::name, 'pg_catalog'::name, 'information_schema'::name]))
+               GROUP BY c.reltablespace
+         ) t ON t.reltablespaceid = ts.oid
+    metrics:
+      - datname:
+          usage: 'LABEL'
+          description: "Database name."
+      - tablespace_oid: 
+          usage: 'LABEL' 
+          description: "oid of the tablespace to check."
+      - tablespace_name: 
+          usage: 'LABEL' 
+          description: "Name of the tablespace to check."
+      - encryption_algorithm: 
+          usage: 'LABEL'  
+          description: "Algorithm used for encryption."
+      - objs: 
+          usage: 'GAUGE'  
+          description: "Number of tables and indexes in the tablespace."
+
   pgpool_nodes:
     query: |
       with primary_node as (select t1.node_id as primary_node_id, t1.lb_weight as primary_lb_weight, t1.status as primary_status from fep_exporter.pgpool2_stat_load_balance as t1 where t1.role = 'primary'), standby_node as (select t1.node_id as standby_node_id, t1.lb_weight as standby_lb_weight, t1.status as standby_status from fep_exporter.pgpool2_stat_load_balance as t1 where t1.role = 'standby') select primary_node_id, primary_lb_weight, primary_status, standby_node_id, standby_lb_weight, standby_status from primary_node, standby_node
@@ -573,7 +659,7 @@
 
   pgpool_stats:
     query: |
-      with primary_node as (select t1.select_cnt as primary_select_cnt, t1.insert_cnt as primary_insert_cnt, t1.update_cnt as primary_update_cnt, t1.delete_cnt as primary_delete_cnt, t1.ddl_cnt as primary_ddl_cnt, t1.other_cnt as primary_other_cnt, t1.panic_cnt as primary_panic_cnt, t1.fatal_cnt as primary_fatal_cnt, t1.error_cnt as primary_error_cnt from fep_exporter.pgpool2_stat_sql_command as t1 where t1.role = 'primary'), standby_node as (select t1.select_cnt as standby_select_cnt, t1.insert_cnt as standby_insert_cnt, t1.update_cnt as standby_update_cnt, t1.delete_cnt as standby_delete_cnt, t1.ddl_cnt as standby_ddl_cnt, t1.other_cnt as standby_other_cnt, t1.panic_cnt as standby_panic_cnt, t1.fatal_cnt as standby_fatal_cnt, t1.error_cnt as standby_error_cnt from fep_exporter.pgpool2_stat_sql_command as t1 where t1.role = 'standby') select primary_select_cnt, primary_insert_cnt, primary_update_cnt, primary_delete_cnt, primary_ddl_cnt, primary_other_cnt, primary_panic_cnt, primary_fatal_cnt, primary_error_cnt, standby_select_cnt, standby_insert_cnt, standby_update_cnt, standby_delete_cnt, standby_ddl_cnt, standby_other_cnt, standby_panic_cnt, standby_fatal_cnt, standby_error_cnt from primary_node, standby_node
+      with primary_node as (select coalesce(sum(t1.select_cnt), 0) as primary_select_cnt, coalesce(sum(t1.insert_cnt), 0) as primary_insert_cnt, coalesce(sum(t1.update_cnt), 0) as primary_update_cnt, coalesce(sum(t1.delete_cnt), 0) as primary_delete_cnt, coalesce(sum(t1.ddl_cnt), 0) as primary_ddl_cnt, coalesce(sum(t1.other_cnt), 0) as primary_other_cnt, coalesce(sum(t1.panic_cnt), 0) as primary_panic_cnt, coalesce(sum(t1.fatal_cnt), 0) as primary_fatal_cnt, coalesce(sum(t1.error_cnt), 0) as primary_error_cnt from fep_exporter.pgpool2_stat_sql_command as t1 where t1.role = 'primary'), standby_node as (select coalesce(sum(t1.select_cnt), 0) as standby_select_cnt, coalesce(sum(t1.insert_cnt), 0) as standby_insert_cnt, coalesce(sum(t1.update_cnt), 0) as standby_update_cnt, coalesce(sum(t1.delete_cnt), 0) as standby_delete_cnt, coalesce(sum(t1.ddl_cnt), 0) as standby_ddl_cnt, coalesce(sum(t1.other_cnt), 0) as standby_other_cnt, coalesce(sum(t1.panic_cnt), 0) as standby_panic_cnt, coalesce(sum(t1.fatal_cnt), 0) as standby_fatal_cnt, coalesce(sum(t1.error_cnt), 0) as standby_error_cnt from fep_exporter.pgpool2_stat_sql_command as t1 where t1.role = 'standby') select primary_select_cnt, primary_insert_cnt, primary_update_cnt, primary_delete_cnt, primary_ddl_cnt, primary_other_cnt, primary_panic_cnt, primary_fatal_cnt, primary_error_cnt, standby_select_cnt, standby_insert_cnt, standby_update_cnt, standby_delete_cnt, standby_ddl_cnt, standby_other_cnt, standby_panic_cnt, standby_fatal_cnt, standby_error_cnt from primary_node, standby_node
     master: true
     metrics:
       - primary_select_cnt:

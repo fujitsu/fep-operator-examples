@@ -22,7 +22,7 @@ spec:
           annotations:
             description: {{ 'Container {{$labels.container}}/{{$labels.pod}} from {{$labels.namespace}} has been high on CPU usage(>80%) for 5 mins' }}
             summary: High Container CPU usage.
-          expr: (sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{pod=~"{{ item.name }}-sts.*", namespace="{{ ansible_operator_meta.namespace }}", container="fep-patroni"}) by (pod,namespace,container)/sum(kube_pod_container_resource_limits_cpu_cores) by (pod,namespace,container))*100 > 80
+          expr: (sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{pod=~"{{ item.name }}-sts.*", namespace="{{ ansible_operator_meta.namespace }}", container="fep-patroni"}) by (pod,namespace,container)/sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod,namespace,container))*100 > 80
           for: 5m
           labels:
             severity: warning
@@ -30,7 +30,7 @@ spec:
           annotations:
             description: {{ 'Container {{$labels.container}}/{{$labels.pod}} from {{$labels.namespace}} has been high on CPU usage(>80%) for 5 mins (OpenShift 4.9 or later)' }}
             summary: High Container CPU usage.
-          expr: (sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{pod=~"{{ item.name }}-sts.*", namespace="{{ ansible_operator_meta.namespace }}", container="fep-patroni"}) by (pod,namespace,container)/sum(kube_pod_container_resource_requests{resource="cpu"}) by (pod,namespace,container))*100 > 80
+          expr: (sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{pod=~"{{ item.name }}-sts.*", namespace="{{ ansible_operator_meta.namespace }}", container="fep-patroni"}) by (pod,namespace,container)/sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod,namespace,container))*100 > 80
           for: 5m
           labels:
             severity: warning
@@ -64,5 +64,19 @@ spec:
             description: {{ 'PostgreSQL instance has too many connections on server {{ $labels.server }} in {{ $labels.namespace }} namespace.' }}
             summary: {{ 'Postgresql too many connections (FEPCluster server {{ $labels.server }})' }}
           expr: pg_capacity_connection_total{namespace="{{ ansible_operator_meta.namespace }}", service="{{ ansible_operator_meta.name }}-service", server=~"{{ item.name }}-sts.*"}/pg_settings_max_connections > 0.9
+          labels:
+            severity: warning
+        - alert: PostgresqlRolePasswordCloseExpierd
+          annotations:
+            description:  "The Postgresql role's password expires in less than 7 days. Please update the password."
+            summary: "Postgresql Role Password expires in less than 7 days."
+          expr: count(pg_password_valid_days{ namespace="{{ ansible_operator_meta.namespace }}", service="{{ ansible_operator_meta.name }}-service", server=~"{{ item.name }}-sts.*", rolname=~".*" } < 8) > 0
+          labels:
+            severity: warning
+        - alert: PostgresqlRolePasswordExpired
+          annotations:
+            description:  "The Postgresql role's password has already expired. Please update the password."
+            summary: "Postgresql Role Password has already expired. "
+          expr: count(pg_password_valid_seconds{ namespace="{{ ansible_operator_meta.namespace }}", service="{{ ansible_operator_meta.name }}-service", server=~"{{ item.name }}-sts.*", rolname=~".*" } < 0) > 0
           labels:
             severity: warning

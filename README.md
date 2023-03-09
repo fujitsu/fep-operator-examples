@@ -1,6 +1,6 @@
-FUJITSU Enterprise Postgres Operator Examples
+Fujitsu Enterprise Postgres Operator Examples
 
-This repository provides sample files that you can use to run FUJITSU Enterprise Postgres Operator.
+This repository provides sample files that you can use to run Fujitsu Enterprise Postgres Operator.
 
 This repository contains various examples such as:.
  - sample yaml file for deploying a database cluster

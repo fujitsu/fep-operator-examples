@@ -15,3 +15,4 @@ spec:
   restoretype: latest
   imagePullPolicy: IfNotPresent
   sysExtraLogging: false
+  sysExtraEvent: true

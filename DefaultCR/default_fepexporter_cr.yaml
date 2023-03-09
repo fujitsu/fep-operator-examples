@@ -5,6 +5,7 @@ metadata:
 spec:
   fepExporter:
     sysExtraLogging: false
+    sysExtraEvent: true
     image:
       pullPolicy: IfNotPresent
     mcSpec:

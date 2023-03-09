@@ -18,10 +18,12 @@ spec:
         memory: 512Mi
     podAntiAffinity: false
     podDisruptionBudget: false
+    usePodName: true
     instances: 1
     servicePort: 27500
     syncMode: "off"
     sysExtraLogging: false
+    sysExtraEvent: true
 
   fepChildCrVal:
     # The values specified below are used ONLY at start-up to create child
@@ -46,7 +48,8 @@ spec:
     customPgParams: |
       # define custom postgresql.conf parameters below to override defaults.
       # Current values are as per default FEP deployment
-      shared_preload_libraries='pgx_datamasking,pg_prewarm,pg_stat_statements'
+      # If you add a library to shared_preload_libraries, add it after the default value.
+      shared_preload_libraries='pgx_datamasking,pg_prewarm,pg_stat_statements,fsep_operator_security'
       session_preload_libraries='pg_prewarm'
       max_prepared_transactions = 100
       max_worker_processes = 30
@@ -140,7 +143,6 @@ spec:
         size: "512Mi"
 
     sysUsers:
-      pgAdminPassword: admin-password
       pgdb: mydb
       pgpassword: mydbpassword
       pguser: mydbuser
