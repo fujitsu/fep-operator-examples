@@ -1,0 +1,26 @@
+apiVersion: fep.fujitsu.io/v1
+kind: FEPLogging
+metadata:
+  name: new-feplogging
+spec:
+  fepLogging:
+    image:
+      pullPolicy: IfNotPresent
+    mcSpec:
+      limits:
+        cpu: 500m
+        memory: 700Mi
+      requests:
+        cpu: 200m
+        memory: 512Mi
+    restartRequired: false
+    sysExtraLogging: false
+    sysExtraEvent: true
+    prometheus:
+      tls:
+        caName: fluentd-caname
+        certificateName: fluentd-cert
+    fepLogging:
+      tls:
+        caName: prometheus-caname
+        certificateName: prometheus-cert

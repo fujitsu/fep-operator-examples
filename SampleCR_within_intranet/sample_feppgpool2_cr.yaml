@@ -1,0 +1,87 @@
+apiVersion: fep.fujitsu.io/v1
+kind: FEPPgpool2
+metadata:
+  name: new-pgpool2
+spec:
+  count: 2
+  serviceport: 9995
+  statusport: 9994
+  limits:
+    cpu: 100m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  fepclustername: new-fep
+  imagePullPolicy: IfNotPresent
+  customlogsize: 1Gi
+  customhba: |
+    local   all         all                               trust
+    host    all         all         127.0.0.1/32          trust
+    host    all         all         ::1/128               trust
+    hostssl all         all         0.0.0.0/0             cert
+  customparams: |
+    listen_addresses = '*'
+    pcp_listen_addresses = '*'
+    num_init_children = 32
+    reserved_connections = 0
+    enable_pool_hba = off
+    allow_clear_text_frontend_auth = off
+    authentication_timeout = 80
+    backend_weight0 = 1
+    backend_weight1 = 1
+    backend_flag0 = 'DISALLOW_TO_FAILOVER'
+    backend_flag1 = 'DISALLOW_TO_FAILOVER'
+    connection_cache = on
+    max_pool = 4
+    listen_backlog_multiplier = 2
+    serialize_accept = off
+    child_life_time = 300
+    client_idle_limit = 0
+    child_max_connections = 0
+    connection_life_time = 0
+    reset_query_list = 'ABORT; DISCARD ALL'
+    client_min_messages = info
+    log_min_messages = debug1
+    log_statement = on
+    log_per_node_statement = on
+    log_client_messages = on
+    log_hostname = on
+    log_connections = on
+    log_line_prefix = '%t: pid %p: '
+    load_balance_mode = on
+    ignore_leading_white_space = on
+    read_only_function_list = ''
+    write_function_list = 'currval,lastval,nextval,setval'
+    database_redirect_preference_list = ''
+    app_name_redirect_preference_list = ''
+    allow_sql_comments = off
+    disable_load_balance_on_write = 'transaction'
+    statement_level_load_balance = on
+    sr_check_period = 0
+    sr_check_user = 'postgres'
+    delay_threshold = 0
+    log_standby_delay = 'none'
+    ssl = on
+    ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
+    ssl_prefer_server_ciphers = off
+    ssl_ecdh_curve = 'prime256v1'
+    ssl_dh_params_file = ''
+    relcache_expire = 0
+    relcache_size = 256
+    check_temp_table = catalog
+    check_unlogged_table = on
+    enable_shared_relcache = on
+    relcache_query_target = primary
+    wd_port0 = 9000
+
+  # Contains the private key of the server certificate to be presented to the client
+  customsslkey: |-
+  
+  # Contains the server certificate to be presented to the client
+  customsslcert: |-
+  
+  # Include the contents of the root certificate below.
+  # - To authenticate a Postgres server certificate
+  # - To authenticate a client's certificate
+  customsslcacert: |-

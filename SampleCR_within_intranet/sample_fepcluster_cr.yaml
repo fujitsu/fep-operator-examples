@@ -1,0 +1,191 @@
+apiVersion: fep.fujitsu.io/v2
+kind: FEPCluster
+metadata:
+  name: new-fep
+spec:
+  fep:
+    customAnnotations:
+      allDeployments: {}
+    forceSsl: true
+    image:
+      pullPolicy: IfNotPresent
+    mcSpec:
+      limits:
+        cpu: 2
+        memory: 8Gi
+      requests:
+        cpu: 2
+        memory: 8Gi
+    podAntiAffinity: true
+    podDisruptionBudget: true
+    usePodName: true
+    instances: 3
+    servicePort: 27500
+    syncMode: "on"
+    sysExtraLogging: false
+    sysExtraEvent: true
+    pgAuditLog:
+      enable: true
+    monitoring:
+      enable: true
+      fepExporter:
+        tls:
+          certificateName: new-fep-fepexporter-fepexporter-cert
+          caName: new-fep-cacert
+      prometheus:
+        tls:
+          certificateName: new-fep-fepexporter-prometheus-cert
+          caName: new-fep-cacert
+    remoteLogging:
+      enable: true
+      fluentdName: new-feplogging
+      tls:
+        certificateName: new-feplogging-fluentbit-cert
+        caName: new-fep-cacert
+    patroni:
+      tls:
+        certificateName: patroni-cert
+        caName: patroni-caname
+    postgres:
+      tls:
+        certificateName: postgres-cert
+        caName: postgres-caname
+
+  fepChildCrVal:
+    # The values specified below are used ONLY at start-up to create child
+    # Custom Resources - FEPVolume, FEPConfig, FEPUser, FEPCert and FEPBackup
+    customPgHba: |
+      # define pg_hba custom rules here to be merged with default rules.
+      # If you use Pgpool2, set the METHOD to md5.
+      # TYPE     DATABASE        USER        ADDRESS        METHOD
+      # hostssl  all             all         <pgpool2>      md5
+      # hostssl  all             all         <pgpool2>      md5
+      hostssl    all             all         0.0.0.0/0      cert
+      hostssl    replication     all         0.0.0.0/0      cert
+    customPgParams: |
+      # define custom postgresql.conf parameters below to override defaults.
+      # Current values are as per default FEP deployment
+      # If you add a library to shared_preload_libraries, add it after the default value.
+      # fsep_operator_security is available in FEP15 and later container images.
+      shared_preload_libraries='pgx_datamasking,pg_prewarm,pg_stat_statements,fsep_operator_security'
+      session_preload_libraries='pg_prewarm'
+      max_prepared_transactions = 100
+      max_worker_processes = 30
+      max_connections = 100
+      work_mem = 12MB
+      maintenance_work_mem = 200MB
+      shared_buffers = 2400MB
+      effective_cache_size = 6000MB
+      checkpoint_completion_target = 0.8
+      # tcp parameters
+      tcp_keepalives_idle = 30
+      tcp_keepalives_interval = 10
+      tcp_keepalives_count = 3
+      # logging parameters in default fep installation
+      # if log volume is not defined, log_directory should be
+      # changed to '/database/userdata/data/log'
+      log_directory = '/database/log'
+      log_filename = 'logfile-%a.log'
+      log_file_mode = 0600
+      log_truncate_on_rotation = on
+      log_rotation_age = 1d
+      log_rotation_size = 0
+      log_checkpoints = on
+      log_line_prefix = '%e %t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h'
+      log_lock_waits = on
+      log_autovacuum_min_duration = 60s
+      logging_collector = on
+      pgaudit.config_file='/opt/app-root/src/pgaudit-cfg/pgaudit.conf'
+      log_replication_commands = on
+      log_min_messages = WARNING
+      log_destination = csvlog
+      # wal_archive parameters in default fep installation
+      archive_mode = on
+      archive_command = 'pgbackrest --stanza=backupstanza --config=/database/userdata/pgbackrest.conf archive-push %p'
+      wal_level = replica
+      max_wal_senders = 12
+      wal_keep_segments = 64
+      track_activities = on
+      track_counts = on
+      password_encryption = 'md5'
+
+    backup:
+      image:
+        pullPolicy: IfNotPresent
+      mcSpec:
+        limits:
+          cpu: 200m
+          memory: 300Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
+      pgbackrestParams: |
+        # if log volume is not defined, log_directory should be
+        # changed to '/database/userdata/data/log'
+        [global]
+        repo1-retention-full=7
+        repo1-retention-full-type=time
+        log-path=/database/log/backup
+      preScript: " "
+      postScript: " "
+      schedule:
+        num: 2
+      schedule1:
+        schedule: "15 0 * * 0"
+        type: "full"
+      schedule2:
+        schedule: "15 0 * * 1-6"
+        type: "incr"
+
+    storage:
+      # Please specify an available storageClass.
+      # The storageClass of backupVol and archivewalVol must be shared storage.
+      dataVol:
+        size: "2Gi"
+      walVol:
+        size: "2Gi"
+      archivewalVol:
+        size: "90Gi"
+        storageClass: "storageClass-name"
+        accessModes:
+          - "ReadWriteMany"
+      logVol:
+        size: "5Gi"
+      backupVol:
+        size: "90Gi"
+        storageClass: "storageClass-name"
+        accessModes:
+          - "ReadWriteMany"
+      tablespaceVol:
+        size: "7.5Gi"
+    sysUsers:
+      passwordValid:
+        days: 30
+      pgAdminPassword: admin-password
+      pgdb: mydb
+      pgpassword: mydbpassword
+      pguser: mydbuser
+      pgrepluser: repluser
+      pgreplpassword: repluserpwd
+      pgRewindUser: rewinduser
+      pgRewindPassword: rewindpassword
+      tdepassphrase: tde-passphrase
+      pgSecurityUser: securityuser
+      pgSecurityPassword: securitypassword
+      pgMetricsUser: metricsuser
+      pgMetricsPassword: metricspassword
+      pgAdminTls:
+        certificateName: pgadmin-cert
+        caName: pgadmin-caname
+        sslMode: verify-full
+      pgrepluserTls:
+        certificateName: pgrepl-cert
+        caName: pgrepl-caname
+        sslMode: verify-full
+      pgRewindUserTls:
+        certificateName: pgrewind-cert
+        caName: pgrewind-caname
+        sslMode: verify-full
+      pgMetricsUserTls:
+        certificateName: pgmetrics-cert
+        caName: pgmetrics-caname
