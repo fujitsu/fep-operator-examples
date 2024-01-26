@@ -11,6 +11,7 @@ Use a sample suitable for your environment.
 
 - Azure Key Vault
 - AWS Secret Manager
+- GCP Secret Manager
 - HashiCorp Vault  
 
 ## Sample Custom Resource List
@@ -19,9 +20,9 @@ Lists the features that are enabled in the sample custom resource.
 
 - FEPCluster Custom Resource: sample_fepcluster_cr_xxx.yaml
   - Consumed resources
-    - core: 4 cores/1 instance
-    - Memory: 16GB/1 instance
-    - Instances: 3
+        - core: 4 cores/1 instance
+        - Memory: 16GB/1 instance
+        - Instances: 3
   - Streaming Replication
   - **Cloud secret management**
   - Backup to object storage  
@@ -62,6 +63,7 @@ Lists the features that are enabled in the sample custom resource.
       - sample_fepcluster_cr_azure.yaml
       - sample_fepcluster_cr_aws.yaml
       - sample_fepcluster_cr_hashicorp.yaml
+      - sample_fepcluster_cr_gcp.yaml
 
     | path                               | description |
     |------                              |------|

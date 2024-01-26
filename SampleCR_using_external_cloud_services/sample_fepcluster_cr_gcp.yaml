@@ -1,0 +1,184 @@
+apiVersion: fep.fujitsu.io/v2
+kind: FEPCluster
+metadata:
+  name: new-fep
+spec:
+  fep:
+    customAnnotations:
+      allDeployments: {}
+    forceSsl: true
+    image:
+      pullPolicy: IfNotPresent
+    mcSpec:
+      limits:
+        cpu: 4
+        memory: 16Gi
+      requests:
+        cpu: 4
+        memory: 16Gi
+    podAntiAffinity: true
+    podDisruptionBudget: true
+    usePodName: true
+    instances: 3
+    servicePort: 27500
+    syncMode: "on"
+    sysExtraLogging: false
+    sysExtraEvent: true
+    pgAuditLog:
+      enable: true
+    monitoring:
+      enable: true
+      fepExporter:
+        tls:
+          certificateName: new-fep-fepexporter-fepexporter-cert
+          caName: new-fep-cacert
+      prometheus:
+        tls:
+          certificateName: new-fep-fepexporter-prometheus-cert
+          caName: new-fep-cacert
+    remoteLogging:
+      enable: true
+      fluentdName: new-feplogging
+      tls:
+        certificateName: new-feplogging-fluentbit-cert
+        caName: new-fep-cacert
+  fepChildCrVal:
+    # The values specified below are used ONLY at start-up to create child
+    # Custom Resources - FEPVolume, FEPConfig, FEPUser, FEPCert and FEPBackup
+    secretStore:
+      method: csi
+      csi:
+        providerName: gcp
+        gcpProvider:
+          credentials: YOUR_GCP_KEY
+          fepSecrets:
+          - pgadminpassword: projects/PROJECT_NO/secrets/pgadminpassword/versions/latest/pgadminpassword
+          - tdepassphrase: projects/PROJECT_NO/secrets/passphrase/versions/latest/passphrase
+          - systemCertificates: projects/PROJECT_NO/secrets/systemCerts/versions/latest/systemCerts
+          - pguser: projects/PROJECT_NO/secrets/pgusername/versions/latest/pgusername
+          - pgpassword: projects/PROJECT_NO/secrets/pgpwd/versions/latest/pgpwd
+          - pgdb: projects/PROJECT_NO/secrets/pgdbsecret/versions/latest/pgdbsecret
+          - pgrepluser: projects/PROJECT_NO/secrets/pgrepluser/versions/latest/pgrepluser
+          - pgreplpassword: projects/PROJECT_NO/secrets/pgreplpassword/versions/latest/pgreplpassword
+          - pgRewinduser: projects/PROJECT_NO/secrets/pgRewinduser/versions/latest/pgRewinduser
+          - pgRewindpassword: projects/PROJECT_NO/secrets/pgRewindpassword/versions/latest/pgRewindpassword
+          - pgMetricsUser: projects/PROJECT_NO/secrets/metricsuser/versions/latest/metricsuser
+          - pgMetricsPassword: projects/PROJECT_NO/secrets/metricspwd/versions/latest/metricspwd
+          - patronitls: projects/PROJECT_NO/secrets/patronicrt/versions/latest/patronicrt
+          - patronitlscacrt: projects/PROJECT_NO/secrets/patronica/versions/latest/patronica
+          - postgrestls: projects/PROJECT_NO/secrets/postgrescrt/versions/latest/postgrescrt
+          - postgrestlscacrt: projects/PROJECT_NO/secrets/postgresca/versions/latest/postgresca
+          - pgAdminTls: projects/PROJECT_NO/secrets/admincrt/versions/latest/admincrt
+          - pgAdminTlscacrt: projects/PROJECT_NO/secrets/adminca/versions/latest/adminca
+          - pgAdminTls_privateKeyPassword: projects/PROJECT_NO/secrets/adminpvtkey/versions/latest/adminpvtkey
+          - pgRewindUserTls: projects/PROJECT_NO/secrets/rewindcrt/versions/latest/rewindcrt
+          - pgRewindUserTlscacrt: projects/PROJECT_NO/secrets/rewindca/versions/latest/rewindca
+          - pgRewindUserTls_privateKeyPassword: projects/PROJECT_NO/secrets/rwndpvtkey/versions/latest/rwndpvtkey
+          - pgrepluserTls: projects/PROJECT_NO/secrets/replcrt/versions/latest/replcrt
+          - pgrepluserTlscacrt: projects/PROJECT_NO/secrets/replca/versions/latest/replca
+          - pgrepluserTls_privateKeyPassword: projects/PROJECT_NO/secrets/replpvtkey/versions/latest/replpvtkey
+          - pgMetricsUserTls: projects/PROJECT_NO/secrets/metricscrt/versions/latest/metricscrt
+          - pgMetricsUserTlscacrt: projects/PROJECT_NO/secrets/metricsca/versions/latest/metricsca
+          - pgMetricsUserTls_privateKeyPassword: projects/PROJECT_NO/secrets/adminpvtkey/versions/latest/adminpvtkey
+
+    customPgHba: |
+      # define pg_hba custom rules here to be merged with default rules.
+      # If you use Pgpool2, set the METHOD to md5.
+      # TYPE     DATABASE        USER        ADDRESS        METHOD
+      # hostssl  all             all         <pgpool2>      md5
+      # hostssl  all             all         <pgpool2>      md5
+      hostssl    all             all         0.0.0.0/0      cert
+      hostssl    replication     all         0.0.0.0/0      cert
+    customPgParams: |
+      # define custom postgresql.conf parameters below to override defaults.
+      # Current values are as per default FEP deployment
+      # If you add a library to shared_preload_libraries, add it after the default value.
+      # fsep_operator_security is available in FEP15 and later container images.
+      shared_preload_libraries='pgx_datamasking,pg_prewarm,pg_stat_statements,fsep_operator_security'
+      session_preload_libraries='pg_prewarm'
+      max_prepared_transactions = 100
+      max_worker_processes = 30
+      max_connections = 100
+      work_mem = 12MB
+      maintenance_work_mem = 200MB
+      shared_buffers = 2400MB
+      effective_cache_size = 6000MB
+      checkpoint_completion_target = 0.8
+      # tcp parameters
+      tcp_keepalives_idle = 30
+      tcp_keepalives_interval = 10
+      tcp_keepalives_count = 3
+      # logging parameters in default fep installation
+      # if log volume is not defined, log_directory should be
+      # changed to '/database/userdata/data/log'
+      log_directory = '/database/log'
+      log_filename = 'logfile-%a.log'
+      log_file_mode = 0600
+      log_truncate_on_rotation = on
+      log_rotation_age = 1d
+      log_rotation_size = 0
+      log_checkpoints = on
+      log_line_prefix = '%e %t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h'
+      log_lock_waits = on
+      log_autovacuum_min_duration = 60s
+      logging_collector = on
+      pgaudit.config_file='/opt/app-root/src/pgaudit-cfg/pgaudit.conf'
+      log_replication_commands = on
+      log_min_messages = WARNING
+      log_destination = csvlog
+      # wal_archive parameters in default fep installation
+      archive_mode = on
+      archive_command = 'pgbackrest --stanza=backupstanza --config=/database/userdata/pgbackrest.conf archive-push %p'
+      wal_level = replica
+      max_wal_senders = 12
+      wal_keep_segments = 64
+      track_activities = on
+      track_counts = on
+      password_encryption = 'md5'
+
+    backup:
+      image:
+        pullPolicy: IfNotPresent
+      mcSpec:
+        limits:
+          cpu: 200m
+          memory: 300Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
+      pgbackrestParams: |
+        # if log volume is not defined, log_directory should be
+        # changed to '/database/userdata/data/log'
+        [global]
+        repo1-retention-full=7
+        repo1-retention-full-type=time
+        log-path=/database/log/backup
+        repo1-type=gcs
+        repo1-path=BACKUP_PATH
+        repo1-gcs-bucket=YOUR_GCS_BUCKET
+        repo1-gcs-endpoint=YOUR_GCS_ENDPOINT
+        repo1-gcs-key=YOUR_GCS_KEY
+        repo1-gcs-key-type=service
+      repoKeySecretName:
+        - YOUR_GCS_KEY_SECRET
+
+      preScript: " "
+      postScript: " "
+      schedule:
+        num: 2
+      schedule1:
+        schedule: "15 0 * * 0"
+        type: "full"
+      schedule2:
+        schedule: "15 0 * * 1-6"
+        type: "incr"
+
+    storage:
+      dataVol:
+        size: "2Gi"
+      walVol:
+        size: "2Gi"
+      logVol:
+        size: "10Gi"
+      tablespaceVol:
+        size: "150Gi"
